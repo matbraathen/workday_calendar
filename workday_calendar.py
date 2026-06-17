@@ -1,31 +1,66 @@
+"""A small calculator for moving a point in time by a number of *workdays*.
+
+A workday is any day that is not a weekend, a unique (one-off) holiday or a
+recurring (yearly) holiday. Time is only ever counted inside the configured
+working window (``workday_start``..``workday_end``).
+"""
+
+import argparse
 import datetime
+
 import utils
 
+DATETIME_FORMAT = "%d/%m/%Y %H:%M"
+DATE_FORMAT = "%d/%m/%Y"
+RECURRING_FORMAT = "%d/%m"
+TIME_FORMAT = "%H:%M"
+
+
+def _parse(value, fmt, description):
+    """Parse ``value`` with ``fmt`` raising a friendly ``ValueError``."""
+    try:
+        return datetime.datetime.strptime(value, fmt)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(
+            f"Invalid {description}: {value!r}. Expected format '{fmt}'."
+        ) from exc
+
+
 class Calendar:
+    """Computes workday offsets relative to a configured working window."""
+
     def __init__(self, workday_start, workday_end):
-        self.workday_start = datetime.datetime.strptime(workday_start, "%H:%M").time()
-        self.workday_end = datetime.datetime.strptime(workday_end, "%H:%M").time()
+        self.workday_start = _parse(workday_start, TIME_FORMAT, "workday start").time()
+        self.workday_end = _parse(workday_end, TIME_FORMAT, "workday end").time()
+        if self.workday_start >= self.workday_end:
+            raise ValueError("workday_start must be earlier than workday_end.")
         self.recurring_holidays = []
         self.unique_holidays = []
 
-    #main method for adding workdays from input
     def addWorkDays(self, datetime_start, workdays):
-        datetime_start = datetime.datetime.strptime(datetime_start, "%d/%m/%Y %H:%M")
-        minutes, days = utils.numberToTime(self, workdays)
-        final_datetime = datetime.datetime(2000, 1, 1, 1, 1)
-        if workdays > 0:
-            final_datetime = utils.addDays(self, datetime_start, minutes, days)
-        elif workdays < 0:
-            final_datetime = utils.subtractDays(self, datetime_start, minutes, days)
-        else:
-            print("Error, workdays must not be 0!")
-        return final_datetime
+        """Return the datetime ``workdays`` working days from ``datetime_start``.
 
-    #method to check if a day is a workday or not
-    #a workday is a day that is not a unique holiday, recurring holiday or on a weekend
-    #if a certain day turns out to not be a workday, we skip it and move on
+        ``workdays`` may be fractional and negative. A value of ``0`` is
+        rejected because it has no meaningful workday offset.
+        """
+        if not isinstance(workdays, (int, float)) or isinstance(workdays, bool):
+            raise TypeError("workdays must be a number.")
+        if workdays == 0:
+            raise ValueError("workdays must not be 0.")
+
+        datetime_start = _parse(datetime_start, DATETIME_FORMAT, "start datetime")
+        minutes, days = utils.numberToTime(self, workdays)
+        if workdays > 0:
+            return utils.addDays(self, datetime_start, minutes, days)
+        return utils.subtractDays(self, datetime_start, minutes, days)
+
     def isWorkday(self, date, operator):
-        #need to do checks untill all 3 passes, for edge cases where weekends and holidays may be adjacent
+        """Advance ``date`` until it lands on a real workday.
+
+        Repeatedly applies the weekend / unique-holiday / recurring-holiday
+        checks (in the direction given by ``operator``) until all three pass,
+        which also handles adjacent weekends and holidays.
+        """
         checks = [0, 0, 0]
         while sum(checks) < 3:
             date, checks[2] = utils.isWeekend(self, date, operator)
@@ -33,36 +68,78 @@ class Calendar:
             date, checks[1] = utils.isRecurringHoliday(self, date, operator)
         return date
 
-    #adds a new sinle holiday to the calendar
     def addHoliday(self, date):
-        date = datetime.datetime.strptime(date, "%d/%m/%Y").date()
-        date = date.strftime("%d/%m/%Y")
-        self.unique_holidays.append(date)
+        """Register a unique holiday given as ``dd/mm/yyyy``."""
+        parsed = _parse(date, DATE_FORMAT, "holiday date").date()
+        self.unique_holidays.append(parsed.strftime(DATE_FORMAT))
 
-    #adds a new recurring holiday to the calendar
     def addRecurringHoliday(self, date):
-        date = datetime.datetime.strptime(date, "%d/%m").date()
-        date = date.strftime("%d/%m")
-        self.recurring_holidays.append(date)
+        """Register a yearly recurring holiday given as ``dd/mm``."""
+        parsed = _parse(date, RECURRING_FORMAT, "recurring holiday date").date()
+        self.recurring_holidays.append(parsed.strftime(RECURRING_FORMAT))
 
     def setStart(self, start):
-        self.workday_start = datetime.datetime.strptime(start, "%H:%M").time()
-    
+        self.workday_start = _parse(start, TIME_FORMAT, "workday start").time()
+
     def getStart(self):
         return self.workday_start
 
     def setEnd(self, end):
-        self.workday_end = datetime.datetime.strptime(end, "%H:%M").time()
-    
+        self.workday_end = _parse(end, TIME_FORMAT, "workday end").time()
+
     def getEnd(self):
         return self.workday_end
 
+
+def _build_parser():
+    parser = argparse.ArgumentParser(
+        description="Calculate a datetime a number of workdays away from a start."
+    )
+    parser.add_argument(
+        "start", help="Start datetime, format 'dd/mm/yyyy HH:MM' (quote it)."
+    )
+    parser.add_argument(
+        "workdays", type=float, help="Workdays to add (may be fractional/negative)."
+    )
+    parser.add_argument(
+        "--start-hour", default="08:00", help="Workday start, format 'HH:MM'."
+    )
+    parser.add_argument(
+        "--end-hour", default="16:00", help="Workday end, format 'HH:MM'."
+    )
+    parser.add_argument(
+        "--holiday",
+        action="append",
+        default=[],
+        metavar="dd/mm/yyyy",
+        help="A unique holiday (repeatable).",
+    )
+    parser.add_argument(
+        "--recurring-holiday",
+        action="append",
+        default=[],
+        metavar="dd/mm",
+        help="A yearly recurring holiday (repeatable).",
+    )
+    return parser
+
+
+def main(argv=None):
+    """CLI entry point. Returns the resulting datetime string."""
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    try:
+        calendar = Calendar(args.start_hour, args.end_hour)
+        for holiday in args.holiday:
+            calendar.addHoliday(holiday)
+        for recurring in args.recurring_holiday:
+            calendar.addRecurringHoliday(recurring)
+        result = calendar.addWorkDays(args.start, args.workdays)
+    except (ValueError, TypeError) as exc:
+        parser.error(str(exc))
+    print(result.strftime(DATETIME_FORMAT))
+    return result
+
+
 if __name__ == "__main__":
-    #example creating of the calendar, and setting up example work hours, format "hours:minutes"
-    myCalendar = Calendar("08:00", "16:00")
-    #single holiday example, format "day/month/year"
-    myCalendar.addHoliday("27/5/2004")
-    #recurring holiday example, format "day/month"
-    myCalendar.addRecurringHoliday("17/5")
-    #example task, inputs are specified point in time with format "day/month/year hours:minutes" and with an amount of working days to said specified time (does not need to be an integer and can be negative)
-    print("final result: ", myCalendar.addWorkDays("24/5/2004 07:03", -6.7470217))
+    main()
