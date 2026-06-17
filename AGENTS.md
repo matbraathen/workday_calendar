@@ -4,67 +4,60 @@ Guidance for AI coding agents (and humans) working in this repository.
 
 ## Project overview
 
-A small, dependency-free Python library that calculates where you land in time
-when moving a number of **workdays** forward or backward from a starting point.
-A workday excludes weekends, one-off ("unique") holidays and yearly
-("recurring") holidays. Time is only counted inside a configured working window.
+A .NET / C# application that calculates where you land in time when moving a
+number of **workdays** forward or backward from a starting point. A workday
+excludes weekends, one-off ("unique") holidays and yearly ("recurring")
+holidays. Time is only counted inside a configured working window.
+
+The calculation engine lives in a UI-agnostic core library; a Blazor web app
+provides the front end.
 
 ## Layout
 
-| File | Purpose |
+| Path | Purpose |
 | --- | --- |
-| `workday_calendar.py` | `Calendar` class (public API) + argparse CLI (`main`). |
-| `utils.py` | Pure helper functions implementing the date arithmetic. |
-| `calendar_test.py` | pytest suite. |
-| `.github/workflows/python-package.yml` | CI: lint (flake8) + tests (pytest). |
+| `src/WorkdayCalendar.Core/Calendar.cs` | The `Calendar` engine (public API). |
+| `src/WorkdayCalendar.Core/InputFormats.cs` | Shared string parsing + validation. |
+| `src/WorkdayCalendar.Web/` | Blazor interactive-server UI (`Components/Pages/Home.razor`). |
+| `tests/WorkdayCalendar.Tests/` | xUnit test suite. |
+| `.github/workflows/dotnet.yml` | CI: restore, build, test. |
 
-## Setup
+## Target framework
 
-```bash
-python -m pip install --upgrade pip
-python -m pip install -r requirements-dev.txt
-```
+All projects target **net8.0** (LTS). Keep it that way unless there is a clear
+reason to change, and update CI (`dotnet.yml`) accordingly.
 
 ## Common commands
 
 ```bash
-# Run the full test suite
-python -m pytest
+dotnet restore WorkdayCalendar.sln
+dotnet build WorkdayCalendar.sln
+dotnet test WorkdayCalendar.sln
 
-# Run with coverage
-python -m pytest --cov=. --cov-report=term-missing
-
-# Lint (matches CI)
-flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-# Run the CLI (note: quote the start datetime)
-python workday_calendar.py "24/5/2004 18:03" -6.7470217 \
-  --holiday "27/5/2004" --recurring-holiday "17/5"
+# Run the web UI locally
+dotnet run --project src/WorkdayCalendar.Web
 ```
 
 ## Date / time formats
 
-- Start datetime: `dd/mm/yyyy HH:MM`
-- Unique holiday: `dd/mm/yyyy`
-- Recurring holiday: `dd/mm`
-- Workday hours: `HH:MM`
+- Start datetime: `d/M/yyyy H:mm`
+- Unique holiday: `d/M/yyyy`
+- Recurring holiday: `d/M`
+- Working hours: `H:mm`
 
 ## Conventions
 
-- Pure standard library only — do **not** add runtime dependencies. Dev-only
-  tooling (pytest, flake8, coverage) belongs in `requirements-dev.txt`.
-- Keep `utils.py` functions pure; they take the owning `calendar` as the first
-  argument and must not print.
-- Raise `ValueError`/`TypeError` with a clear message for invalid input rather
-  than printing or returning sentinel values.
-- The parametrized expected results in `calendar_test.py` encode intended
-  behavior. If you change the core arithmetic, update those cases deliberately
-  and explain why.
+- Keep `WorkdayCalendar.Core` free of any UI / web dependencies so it stays
+  reusable and unit-testable.
+- Validate input and throw `ArgumentException` with a clear, format-aware
+  message rather than leaking a raw `FormatException` or returning a sentinel.
+- The reference cases in `CalendarTests.cs` (`AddWorkDays_MatchesReferenceCases`)
+  encode the intended arithmetic. If you change the core algorithm, update those
+  cases deliberately and explain why.
 
 ## Definition of done
 
 Before finishing a change, make sure both of these are green:
 
-1. `python -m pytest`
-2. `flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics`
+1. `dotnet build WorkdayCalendar.sln`
+2. `dotnet test WorkdayCalendar.sln`
