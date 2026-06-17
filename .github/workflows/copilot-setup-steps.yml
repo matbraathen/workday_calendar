@@ -1,7 +1,7 @@
 name: "Copilot Setup Steps"
 
-# Installs the tools the Copilot coding agent needs to build, test and lint
-# this repository in its ephemeral environment.
+# Installs the tools the Copilot coding agent needs to build, test and run this
+# repository in its ephemeral environment.
 on:
   workflow_dispatch:
   push:
@@ -18,13 +18,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
         with:
-          python-version: "3.12"
-          cache: pip
+          dotnet-version: "8.0.x"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+      - name: Restore dependencies
+        run: dotnet restore WorkdayCalendar.sln

@@ -1,0 +1,113 @@
+@page "/"
+@using WorkdayCalendar.Core
+
+<PageTitle>Workday Calendar</PageTitle>
+
+<h1 class="mb-3">Workday Calendar</h1>
+<p class="text-muted">
+    Calculate where you land in time after moving a number of working days from a
+    starting point. Weekends and the holidays you configure below are skipped.
+</p>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label" for="start-hour">Workday start</label>
+                        <input id="start-hour" type="time" class="form-control" @bind="_startHour" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="end-hour">Workday end</label>
+                        <input id="end-hour" type="time" class="form-control" @bind="_endHour" />
+                    </div>
+
+                    <div class="col-7">
+                        <label class="form-label" for="start-moment">Start date &amp; time</label>
+                        <input id="start-moment" type="datetime-local" class="form-control"
+                               @bind="_startMoment" />
+                    </div>
+                    <div class="col-5">
+                        <label class="form-label" for="workdays">Workdays (+/-, fractional)</label>
+                        <input id="workdays" type="number" step="any" class="form-control"
+                               @bind="_workdays" />
+                    </div>
+
+                    <div class="col-6">
+                        <label class="form-label" for="unique">Unique holidays</label>
+                        <textarea id="unique" rows="3" class="form-control" @bind="_uniqueHolidaysText"
+                                  placeholder="dd/mm/yyyy (one per line)"></textarea>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="recurring">Recurring holidays</label>
+                        <textarea id="recurring" rows="3" class="form-control" @bind="_recurringHolidaysText"
+                                  placeholder="dd/mm (one per line)"></textarea>
+                    </div>
+
+                    <div class="col-12">
+                        <button class="btn btn-primary" @onclick="Calculate">Calculate</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        @if (_result is not null)
+        {
+            <div class="alert alert-success" role="alert">
+                <div class="small text-uppercase fw-bold">Result</div>
+                <div class="fs-4">@_result</div>
+            </div>
+        }
+        @if (_error is not null)
+        {
+            <div class="alert alert-danger" role="alert">
+                <div class="small text-uppercase fw-bold">Error</div>
+                <div>@_error</div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private TimeOnly _startHour = new(8, 0);
+    private TimeOnly _endHour = new(16, 0);
+    private DateTime _startMoment = new(2004, 5, 24, 19, 3, 0);
+    private double _workdays = 44.723656;
+    private string _uniqueHolidaysText = "27/5/2004";
+    private string _recurringHolidaysText = "17/5";
+
+    private string? _result;
+    private string? _error;
+
+    private void Calculate()
+    {
+        try
+        {
+            var calendar = new Calendar(_startHour, _endHour);
+            foreach (var holiday in SplitLines(_uniqueHolidaysText))
+            {
+                calendar.AddHoliday(holiday);
+            }
+
+            foreach (var holiday in SplitLines(_recurringHolidaysText))
+            {
+                calendar.AddRecurringHoliday(holiday);
+            }
+
+            DateTime result = calendar.AddWorkDays(_startMoment, _workdays);
+            _result = result.ToString("dddd dd/MM/yyyy HH:mm");
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _result = null;
+            _error = ex.Message;
+        }
+    }
+
+    private static IEnumerable<string> SplitLines(string text) =>
+        text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}

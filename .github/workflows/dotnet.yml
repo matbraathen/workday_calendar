@@ -1,0 +1,27 @@
+# Builds the solution and runs the xUnit test suite on every push and PR.
+# https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+
+name: .NET
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore WorkdayCalendar.sln
+      - name: Build
+        run: dotnet build WorkdayCalendar.sln --configuration Release --no-restore
+      - name: Test
+        run: dotnet test WorkdayCalendar.sln --configuration Release --no-build --verbosity normal
